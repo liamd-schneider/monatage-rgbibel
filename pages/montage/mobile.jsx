@@ -5,7 +5,7 @@ import { useRouter } from "next/router"
 // ── Config ────────────────────────────────────────────────────────────────────
 // All writes go through the main app's API route (CORS-enabled).
 // Only reads that are safe (no secret token needed) use the public Sanity client.
-const MAIN_API = "https://montage-rgbibel-pc.vercel.app/api/sanity"
+const MAIN_API = "https://rgbibelofficial.com/api/sanity"
 //                ↑ Replace with your actual PC-app domain
 
 // Read-only public client (no token needed for fetching session by ID)
