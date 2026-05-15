@@ -2,64 +2,103 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { createClient } from "@sanity/client"
 import { useRouter } from "next/router"
 
+// ── Config ────────────────────────────────────────────────────────────────────
+// All writes go through the main app's API route (CORS-enabled).
+// Only reads that are safe (no secret token needed) use the public Sanity client.
+const MAIN_API = "https://montage-rgbibel-pc.vercel.app/api/sanity"
+//                ↑ Replace with your actual PC-app domain
+
+// Read-only public client (no token needed for fetching session by ID)
 const client = createClient({
   projectId: "6fnwq7k5",
   dataset: "production",
   apiVersion: "2023-11-21",
   useCdn: false,
-  token: process.env.NEXT_PUBLIC_SANITY_TOKEN,
+  // No token – reads are public; all writes go via MAIN_API
 })
 
 const steps = [
-  { title: "CPU-Installation",        description: "Platzieren Sie vorsichtig die CPU im Sockel.",         icon: "🔲" },
-  { title: "Mainboard-Installation",  description: "Setzen Sie das Mainboard ins Gehäuse ein.",            icon: "🖥️" },
-  { title: "Kühler-Installation",     description: "Bringen Sie den CPU-Kühler an.",                       icon: "❄️" },
-  { title: "RAM-Installation",        description: "Installieren Sie die RAM-Module.",                      icon: "🟦" },
-  { title: "Grafikkarten-Installation", description: "Setzen Sie die Grafikkarte ein.",                    icon: "🎮" },
-  { title: "Netzteil-Installation",   description: "Installieren Sie das Netzteil.",                       icon: "⚡" },
-  { title: "Kabelmanagement",         description: "Ordnen Sie die Kabel sorgfältig an.",                  icon: "🔌" },
-  { title: "Abschließende Überprüfung", description: "Finale Kontrolle des gesamten Systems.",             icon: "✅" },
+  { title: "CPU-Installation",          description: "Platzieren Sie vorsichtig die CPU im Sockel.",        icon: "🔲" },
+  { title: "Mainboard-Installation",    description: "Setzen Sie das Mainboard ins Gehäuse ein.",           icon: "🖥️" },
+  { title: "Kühler-Installation",       description: "Bringen Sie den CPU-Kühler an.",                      icon: "❄️" },
+  { title: "RAM-Installation",          description: "Installieren Sie die RAM-Module.",                     icon: "🟦" },
+  { title: "Grafikkarten-Installation", description: "Setzen Sie die Grafikkarte ein.",                     icon: "🎮" },
+  { title: "Netzteil-Installation",     description: "Installieren Sie das Netzteil.",                      icon: "⚡" },
+  { title: "Kabelmanagement",           description: "Ordnen Sie die Kabel sorgfältig an.",                 icon: "🔌" },
+  { title: "Abschließende Überprüfung", description: "Finale Kontrolle des gesamten Systems.",              icon: "✅" },
 ]
 
-async function uploadImageToSanity(blob, filename) {
-  const file = new File([blob], filename, { type: blob.type || "image/jpeg" })
-  const asset = await client.assets.upload("image", file)
-  return { url: asset.url, assetId: asset._id }
+// ── API helpers ───────────────────────────────────────────────────────────────
+async function callMainApi(action, payload) {
+  const res = await fetch(MAIN_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, payload }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `HTTP ${res.status}`)
+  }
+  return res.json()
 }
 
 async function fetchSession(sessionId) {
-  return client.fetch(`*[_type == "assemblySession" && sessionId == $sid][0]`, { sid: sessionId })
+  return client.fetch(
+    `*[_type == "assemblySession" && sessionId == $sid][0]`,
+    { sid: sessionId }
+  )
+}
+
+// Convert a Blob/File to base64 string
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload  = () => resolve(reader.result.split(",")[1])
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
+// Upload via the PC app's API (avoids CORS / token exposure)
+async function uploadImageViaApi(blob, filename) {
+  const base64 = await blobToBase64(blob)
+  return callMainApi("uploadImageFromMobile", {
+    base64,
+    filename,
+    contentType: blob.type || "image/jpeg",
+  })
+  // returns { url, assetId }
 }
 
 // ── Signature Canvas ──────────────────────────────────────────────────────────
 function SignatureCanvas({ onSave }) {
   const canvasRef = useRef(null)
-  const drawing = useRef(false)
-  const lastPos = useRef(null)
+  const drawing   = useRef(false)
+  const lastPos   = useRef(null)
 
   const getPos = (e, canvas) => {
     const rect = canvas.getBoundingClientRect()
-    const src = e.touches ? e.touches[0] : e
+    const src  = e.touches ? e.touches[0] : e
     return {
-      x: (src.clientX - rect.left) * (canvas.width / rect.width),
-      y: (src.clientY - rect.top) * (canvas.height / rect.height),
+      x: (src.clientX - rect.left) * (canvas.width  / rect.width),
+      y: (src.clientY - rect.top)  * (canvas.height / rect.height),
     }
   }
 
-  const start = (e) => { e.preventDefault(); drawing.current = true; lastPos.current = getPos(e, canvasRef.current) }
+  const start = (e) => { e.preventDefault(); drawing.current = true;  lastPos.current = getPos(e, canvasRef.current) }
   const move  = (e) => {
     e.preventDefault()
     if (!drawing.current) return
     const canvas = canvasRef.current
-    const ctx = canvas.getContext("2d")
-    const pos = getPos(e, canvas)
+    const ctx    = canvas.getContext("2d")
+    const pos    = getPos(e, canvas)
     ctx.beginPath()
     ctx.moveTo(lastPos.current.x, lastPos.current.y)
     ctx.lineTo(pos.x, pos.y)
     ctx.strokeStyle = "#04cefe"
-    ctx.lineWidth = 2.5
-    ctx.lineCap = "round"
-    ctx.lineJoin = "round"
+    ctx.lineWidth   = 2.5
+    ctx.lineCap     = "round"
+    ctx.lineJoin    = "round"
     ctx.stroke()
     lastPos.current = pos
   }
@@ -143,9 +182,7 @@ function ImageUploadArea({ stepIndex, images, onUpload, uploading }) {
           opacity: uploading ? 0.4 : 1,
         }}
       >
-        {uploading
-          ? "Hochladen…"
-          : `+ ${images.length > 0 ? "Weiteres Bild" : "Bild aufnehmen"}`}
+        {uploading ? "Hochladen…" : `+ ${images.length > 0 ? "Weiteres Bild" : "Bild aufnehmen"}`}
       </button>
     </div>
   )
@@ -156,16 +193,16 @@ export default function MobilePage() {
   const router = useRouter()
   const { session: sessionId } = router.query
 
-  const [sessionDoc, setSessionDoc]     = useState(null)
-  const [currentStep, setCurrentStep]   = useState(0)
-  const [stepImages, setStepImages]     = useState(steps.map(() => []))
-  const [uploading, setUploading]       = useState(false)
-  const [signerName, setSignerName]     = useState("")
+  const [sessionDoc, setSessionDoc]         = useState(null)
+  const [currentStep, setCurrentStep]       = useState(0)
+  const [stepImages, setStepImages]         = useState(steps.map(() => []))
+  const [uploading, setUploading]           = useState(false)
+  const [signerName, setSignerName]         = useState("")
   const [signatureSaved, setSignatureSaved] = useState(false)
-  const [sigUploading, setSigUploading] = useState(false)
-  const [error, setError]               = useState(null)
-  const [installed, setInstalled]       = useState(false)
-  const deferredPrompt                  = useRef(null)
+  const [sigUploading, setSigUploading]     = useState(false)
+  const [error, setError]                   = useState(null)
+  const [installed, setInstalled]           = useState(false)
+  const deferredPrompt                      = useRef(null)
 
   // PWA install prompt
   useEffect(() => {
@@ -196,11 +233,31 @@ export default function MobilePage() {
     })
   }, [sessionId])
 
-  // Upload image
+  // ── Ping the PC app every 10 s so it knows the phone is connected ──────────
+  useEffect(() => {
+    if (!sessionId) return
+
+    const ping = async () => {
+      try {
+        const doc = await fetchSession(sessionId)
+        if (doc?._id) {
+          await callMainApi("pingSession", { id: doc._id })
+        }
+      } catch (e) {
+        console.warn("Ping failed:", e.message)
+      }
+    }
+
+    ping() // immediate first ping
+    const interval = setInterval(ping, 10000)
+    return () => clearInterval(interval)
+  }, [sessionId])
+
+  // Upload image via the PC app's API
   const handleImageUpload = useCallback(async (file, stepIdx) => {
     setUploading(true)
     try {
-      const { url, assetId } = await uploadImageToSanity(file, `step-${stepIdx}-${Date.now()}.jpg`)
+      const { url, assetId } = await uploadImageViaApi(file, `step-${stepIdx}-${Date.now()}.jpg`)
       const newImg = { url, assetId, uploadedAt: new Date().toISOString() }
 
       setStepImages((prev) => {
@@ -209,16 +266,22 @@ export default function MobilePage() {
         return next
       })
 
+      // Patch the session via the PC app API
       const fresh = await fetchSession(sessionId)
       if (fresh) {
         const stepsCopy = (fresh.steps || []).map((s) =>
-          s.stepIndex === stepIdx ? { ...s, images: [...(s.images || []), newImg] } : s
+          s.stepIndex === stepIdx
+            ? { ...s, images: [...(s.images || []), newImg] }
+            : s
         )
-        // If step doesn't exist yet, add it
         if (!stepsCopy.find((s) => s.stepIndex === stepIdx)) {
           stepsCopy.push({ stepIndex: stepIdx, images: [newImg] })
         }
-        await client.patch(fresh._id).set({ steps: stepsCopy, currentStep: stepIdx }).commit()
+        await callMainApi("patchSession", {
+          id: fresh._id,
+          steps: stepsCopy,
+          currentStep: stepIdx,
+        })
       }
     } catch (e) {
       console.error(e)
@@ -229,15 +292,24 @@ export default function MobilePage() {
     }
   }, [sessionId])
 
-  // Upload signature
+  // Upload signature via the PC app's API
   const handleSignature = useCallback(async (blob) => {
     setSigUploading(true)
     try {
-      const { url, assetId } = await uploadImageToSanity(blob, `signature-${Date.now()}.png`)
-      const sigData = { url, assetId, signerName: signerName || "Mitarbeiter", signedAt: new Date().toISOString() }
+      const { url, assetId } = await uploadImageViaApi(blob, `signature-${Date.now()}.png`)
+      const sigData = {
+        url,
+        assetId,
+        signerName: signerName || "Mitarbeiter",
+        signedAt: new Date().toISOString(),
+      }
       const fresh = await fetchSession(sessionId)
       if (fresh) {
-        await client.patch(fresh._id).set({ signature: sigData, status: "completed" }).commit()
+        await callMainApi("patchSession", {
+          id: fresh._id,
+          signature: sigData,
+          status: "completed",
+        })
       }
       setSignatureSaved(true)
     } catch (e) {
@@ -271,6 +343,7 @@ export default function MobilePage() {
         @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&display=swap');
         * { -webkit-tap-highlight-color: transparent; }
         body { overscroll-behavior: none; }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
 
       {/* PWA Install Banner */}
@@ -413,10 +486,6 @@ export default function MobilePage() {
           </button>
         </div>
       </div>
-
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
     </div>
   )
 }
