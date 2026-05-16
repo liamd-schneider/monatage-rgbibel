@@ -2,8 +2,6 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { useRouter } from "next/router"
 
 // ── Config ────────────────────────────────────────────────────────────────────
-// ALL requests (reads + writes) go through the PC app's CORS-enabled API route.
-// No Sanity client is used here — that was the source of the CORS errors.
 const MAIN_API = "https://rgbibelofficial.com/api/sanity"
 console.log("[Config] MAIN_API endpoint:", MAIN_API)
 
@@ -37,31 +35,21 @@ async function callMainApi(action, payload) {
   return data
 }
 
-// All session reads now go through the API route — no direct Sanity calls
 async function fetchSession(sessionId) {
   console.log(`[Session] Fetching session ${sessionId} via API route`)
   return callMainApi("fetchSession", { sessionId })
 }
 
-// Convert a Blob/File to base64 string
 function blobToBase64(blob) {
   console.log(`[blobToBase64] Converting blob, size: ${blob.size}`)
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onload  = () => {
-      const base64 = reader.result.split(",")[1]
-      console.log(`[blobToBase64] Done, length: ${base64.length}`)
-      resolve(base64)
-    }
-    reader.onerror = (err) => {
-      console.error(`[blobToBase64] Failed:`, err)
-      reject(err)
-    }
+    reader.onload  = () => { resolve(reader.result.split(",")[1]) }
+    reader.onerror = (err) => { console.error(`[blobToBase64] Failed:`, err); reject(err) }
     reader.readAsDataURL(blob)
   })
 }
 
-// Upload image via the PC app's API (avoids CORS / token exposure)
 async function uploadImageViaApi(blob, filename) {
   console.log(`[uploadImageViaApi] Uploading ${filename}, size: ${blob.size}`)
   const base64 = await blobToBase64(blob)
@@ -71,7 +59,7 @@ async function uploadImageViaApi(blob, filename) {
     contentType: blob.type || "image/jpeg",
   })
   console.log(`[uploadImageViaApi] Result:`, result)
-  return result // { url, assetId }
+  return result
 }
 
 // ── Signature Canvas ──────────────────────────────────────────────────────────
@@ -89,7 +77,7 @@ function SignatureCanvas({ onSave }) {
     }
   }
 
-  const start = (e) => { e.preventDefault(); drawing.current = true;  lastPos.current = getPos(e, canvasRef.current) }
+  const start = (e) => { e.preventDefault(); drawing.current = true; lastPos.current = getPos(e, canvasRef.current) }
   const move  = (e) => {
     e.preventDefault()
     if (!drawing.current) return
@@ -100,7 +88,7 @@ function SignatureCanvas({ onSave }) {
     ctx.moveTo(lastPos.current.x, lastPos.current.y)
     ctx.lineTo(pos.x, pos.y)
     ctx.strokeStyle = "#04cefe"
-    ctx.lineWidth   = 2.5
+    ctx.lineWidth   = 3
     ctx.lineCap     = "round"
     ctx.lineJoin    = "round"
     ctx.stroke()
@@ -117,26 +105,49 @@ function SignatureCanvas({ onSave }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 10, letterSpacing: "0.2em", textTransform: "uppercase" }}>
+      <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 11, letterSpacing: "0.2em", textTransform: "uppercase" }}>
         Hier unterschreiben
       </div>
-      <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", border: "2px solid rgba(4,206,254,0.3)", background: "rgba(0,0,0,0.6)" }}>
+      <div style={{
+        position: "relative", borderRadius: 16, overflow: "hidden",
+        border: "2px solid rgba(4,206,254,0.3)", background: "rgba(0,0,0,0.6)",
+        // min-height so it's usable even on small screens
+        minHeight: 140,
+      }}>
         <canvas
           ref={canvasRef}
           width={680}
-          height={200}
+          height={220}
           style={{ width: "100%", touchAction: "none", display: "block" }}
           onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
           onTouchStart={start} onTouchMove={move} onTouchEnd={end}
         />
-        <div style={{ position: "absolute", bottom: 12, left: 0, right: 0, margin: "0 24px", height: 1, background: "rgba(255,255,255,0.1)" }} />
-        <div style={{ position: "absolute", bottom: 20, left: 24, color: "rgba(255,255,255,0.15)", fontSize: 10, letterSpacing: "0.3em", textTransform: "uppercase" }}>Unterschrift</div>
+        <div style={{ position: "absolute", bottom: 14, left: 0, right: 0, margin: "0 24px", height: 1, background: "rgba(255,255,255,0.1)" }} />
+        <div style={{ position: "absolute", bottom: 22, left: 24, color: "rgba(255,255,255,0.15)", fontSize: 10, letterSpacing: "0.3em", textTransform: "uppercase" }}>
+          Unterschrift
+        </div>
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <button onClick={clear} style={{ flex: 1, padding: "10px 0", borderRadius: 12, border: "1px solid rgba(255,255,255,0.15)", background: "transparent", color: "rgba(255,255,255,0.5)", fontSize: 14, cursor: "pointer" }}>
+      <div style={{ display: "flex", gap: 10 }}>
+        <button
+          onClick={clear}
+          style={{
+            flex: 1, padding: "14px 0", borderRadius: 14,
+            border: "1px solid rgba(255,255,255,0.15)", background: "transparent",
+            color: "rgba(255,255,255,0.5)", fontSize: 15, cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
           Löschen
         </button>
-        <button onClick={save} style={{ flex: 1, padding: "10px 0", borderRadius: 12, border: "none", background: "linear-gradient(135deg,#04cefe,rgba(4,206,254,0.5))", color: "#000", fontSize: 14, fontWeight: 900, cursor: "pointer" }}>
+        <button
+          onClick={save}
+          style={{
+            flex: 2, padding: "14px 0", borderRadius: 14, border: "none",
+            background: "linear-gradient(135deg,#04cefe,rgba(4,206,254,0.5))",
+            color: "#000", fontSize: 15, fontWeight: 900, cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
           Speichern
         </button>
       </div>
@@ -151,12 +162,27 @@ function ImageUploadArea({ stepIndex, images, onUpload, uploading }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {images.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+        <div style={{
+          display: "grid",
+          // 2 columns on narrow screens, 3 on wider
+          gridTemplateColumns: "repeat(auto-fill, minmax(90px, 1fr))",
+          gap: 8,
+        }}>
           {images.map((img, i) => (
-            <div key={i} style={{ position: "relative", aspectRatio: "1", borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,0.1)" }}>
+            <div key={i} style={{
+              position: "relative", aspectRatio: "1",
+              borderRadius: 12, overflow: "hidden",
+              border: "1px solid rgba(255,255,255,0.1)",
+            }}>
               <img src={img.url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.4), transparent)" }} />
-              <div style={{ position: "absolute", bottom: 4, right: 4, fontSize: 9, color: "rgba(255,255,255,0.5)", background: "rgba(0,0,0,0.6)", padding: "1px 4px", borderRadius: 4 }}>#{i + 1}</div>
+              <div style={{
+                position: "absolute", bottom: 5, right: 5, fontSize: 10,
+                color: "rgba(255,255,255,0.6)", background: "rgba(0,0,0,0.6)",
+                padding: "2px 5px", borderRadius: 5,
+              }}>
+                #{i + 1}
+              </div>
             </div>
           ))}
         </div>
@@ -179,14 +205,28 @@ function ImageUploadArea({ stepIndex, images, onUpload, uploading }) {
         onClick={() => inputRef.current?.click()}
         disabled={uploading}
         style={{
-          width: "100%", padding: "16px 0", borderRadius: 16,
-          border: "2px dashed rgba(4,206,254,0.3)", background: "transparent",
-          color: "#04cefe", fontSize: 14, fontWeight: 700, letterSpacing: "0.15em",
-          textTransform: "uppercase", cursor: uploading ? "not-allowed" : "pointer",
+          width: "100%",
+          // generous tap target
+          padding: "20px 0",
+          borderRadius: 16,
+          border: "2px dashed rgba(4,206,254,0.35)",
+          background: "rgba(4,206,254,0.04)",
+          color: "#04cefe",
+          fontSize: 15,
+          fontWeight: 700,
+          letterSpacing: "0.1em",
+          textTransform: "uppercase",
+          cursor: uploading ? "not-allowed" : "pointer",
           opacity: uploading ? 0.4 : 1,
+          fontFamily: "inherit",
+          WebkitTapHighlightColor: "transparent",
         }}
       >
-        {uploading ? "Hochladen…" : `+ ${images.length > 0 ? "Weiteres Bild" : "Bild aufnehmen"}`}
+        {uploading
+          ? "⏳ Hochladen…"
+          : images.length > 0
+          ? "+ Weiteres Bild"
+          : "📷 Bild aufnehmen"}
       </button>
     </div>
   )
@@ -196,8 +236,6 @@ function ImageUploadArea({ stepIndex, images, onUpload, uploading }) {
 export default function MobilePage() {
   const router = useRouter()
   const { session: sessionId } = router.query
-  console.log("[Component] MobilePage mounted, MAIN_API:", MAIN_API)
-  console.log("[Component] Initial sessionId from router:", sessionId)
 
   const [sessionDoc, setSessionDoc]         = useState(null)
   const [currentStep, setCurrentStep]       = useState(0)
@@ -212,11 +250,7 @@ export default function MobilePage() {
 
   // PWA install prompt
   useEffect(() => {
-    const handler = (e) => {
-      e.preventDefault()
-      deferredPrompt.current = e
-      setInstalled(true)
-    }
+    const handler = (e) => { e.preventDefault(); deferredPrompt.current = e; setInstalled(true) }
     window.addEventListener("beforeinstallprompt", handler)
     return () => window.removeEventListener("beforeinstallprompt", handler)
   }, [])
@@ -229,22 +263,12 @@ export default function MobilePage() {
     setInstalled(false)
   }
 
-  // Load session — via API route, no direct Sanity call
+  // Load session
   useEffect(() => {
-    console.log(`[Init] sessionId from router:`, sessionId)
-    if (!sessionId) {
-      console.warn("[Init] No sessionId in router query")
-      return
-    }
-    console.log("[Init] Starting session fetch...")
+    if (!sessionId) return
     fetchSession(sessionId)
       .then((doc) => {
-        console.log("[Init] Session doc fetched:", doc)
-        if (!doc) {
-          console.error("[Init] Session document is null/undefined")
-          setError("Session nicht gefunden.")
-          return
-        }
+        if (!doc) { setError("Session nicht gefunden."); return }
         setSessionDoc(doc)
         const restored = steps.map((_, i) => {
           const s = doc.steps?.find((st) => st.stepIndex === i)
@@ -252,77 +276,42 @@ export default function MobilePage() {
         })
         setStepImages(restored)
       })
-      .catch((err) => {
-        console.error("[Init] Error fetching session:", err)
-        setError("Fehler beim Laden der Session.")
-      })
+      .catch(() => setError("Fehler beim Laden der Session."))
   }, [sessionId])
 
-  // Ping every 10s — also via API route
+  // Ping every 10s
   useEffect(() => {
-    console.log("[Ping] Setting up ping effect, sessionId:", sessionId)
-    if (!sessionId) {
-      console.warn("[Ping] No sessionId, skipping ping setup")
-      return
-    }
-
+    if (!sessionId) return
     const ping = async () => {
       try {
-        console.log("[Ping] Executing ping...")
         const doc = await fetchSession(sessionId)
-        if (doc?._id) {
-          await callMainApi("pingSession", { id: doc._id })
-          console.log("[Ping] Ping successful")
-        } else {
-          console.warn("[Ping] Session not found or no _id")
-        }
-      } catch (e) {
-        console.error("[Ping] Ping failed:", e.message)
-      }
+        if (doc?._id) await callMainApi("pingSession", { id: doc._id })
+      } catch (e) { console.error("[Ping] failed:", e.message) }
     }
-
-    console.log("[Ping] Running immediate first ping")
     ping()
-    const interval = setInterval(() => {
-      console.log("[Ping] 10s interval ping triggered")
-      ping()
-    }, 10000)
-    return () => {
-      console.log("[Ping] Clearing interval")
-      clearInterval(interval)
-    }
+    const interval = setInterval(ping, 10000)
+    return () => clearInterval(interval)
   }, [sessionId])
 
-  // Upload image via the PC app's API
   const handleImageUpload = useCallback(async (file, stepIdx) => {
-    console.log(`[Upload] Starting image upload for step ${stepIdx}:`, file.name)
     setUploading(true)
     try {
       const { url, assetId } = await uploadImageViaApi(file, `step-${stepIdx}-${Date.now()}.jpg`)
       const newImg = { url, assetId, uploadedAt: new Date().toISOString() }
-
       setStepImages((prev) => {
         const next = [...prev]
         next[stepIdx] = [...(next[stepIdx] || []), newImg]
         return next
       })
-
       const fresh = await fetchSession(sessionId)
       if (fresh) {
         const stepsCopy = (fresh.steps || []).map((s) =>
-          s.stepIndex === stepIdx
-            ? { ...s, images: [...(s.images || []), newImg] }
-            : s
+          s.stepIndex === stepIdx ? { ...s, images: [...(s.images || []), newImg] } : s
         )
         if (!stepsCopy.find((s) => s.stepIndex === stepIdx)) {
           stepsCopy.push({ stepIndex: stepIdx, images: [newImg] })
         }
-        await callMainApi("patchSession", {
-          id: fresh._id,
-          steps: stepsCopy,
-          currentStep: stepIdx,
-        })
-        console.log(`[Upload] Session patched successfully`)
+        await callMainApi("patchSession", { id: fresh._id, steps: stepsCopy, currentStep: stepIdx })
       }
     } catch (e) {
       console.error(`[Upload] Error:`, e)
@@ -333,26 +322,14 @@ export default function MobilePage() {
     }
   }, [sessionId])
 
-  // Upload signature via the PC app's API
   const handleSignature = useCallback(async (blob) => {
-    console.log(`[Signature] Starting signature upload. Name: ${signerName}`)
     setSigUploading(true)
     try {
       const { url, assetId } = await uploadImageViaApi(blob, `signature-${Date.now()}.png`)
-      const sigData = {
-        url,
-        assetId,
-        signerName: signerName || "Mitarbeiter",
-        signedAt: new Date().toISOString(),
-      }
+      const sigData = { url, assetId, signerName: signerName || "Mitarbeiter", signedAt: new Date().toISOString() }
       const fresh = await fetchSession(sessionId)
       if (fresh) {
-        await callMainApi("patchSession", {
-          id: fresh._id,
-          signature: sigData,
-          status: "completed",
-        })
-        console.log(`[Signature] Session patched with signature`)
+        await callMainApi("patchSession", { id: fresh._id, signature: sigData, status: "completed" })
       }
       setSignatureSaved(true)
     } catch (e) {
@@ -370,7 +347,11 @@ export default function MobilePage() {
 
   if (!sessionId) {
     return (
-      <div style={{ minHeight: "100vh", background: "#000", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, textAlign: "center", fontFamily: "'DM Mono', monospace" }}>
+      <div style={{
+        minHeight: "100svh", background: "#000", display: "flex",
+        alignItems: "center", justifyContent: "center",
+        padding: 24, textAlign: "center", fontFamily: "'DM Mono', monospace",
+      }}>
         <div>
           <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
           <div style={{ color: "#fff", fontWeight: 900, fontSize: 20, marginBottom: 8 }}>Keine Session</div>
@@ -381,19 +362,43 @@ export default function MobilePage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#000", color: "#fff", fontFamily: "'DM Mono', monospace" }}>
+    <div style={{
+      // svh = small viewport height — accounts for mobile browser chrome
+      minHeight: "100svh",
+      background: "#000",
+      color: "#fff",
+      fontFamily: "'DM Mono', monospace",
+      // max-width so it doesn't look insane on tablet/desktop accidentally
+      maxWidth: 600,
+      margin: "0 auto",
+    }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&display=swap');
+        *, *::before, *::after { box-sizing: border-box; }
         * { -webkit-tap-highlight-color: transparent; }
-        body { overscroll-behavior: none; }
+        body { overscroll-behavior: none; margin: 0; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        /* Prevent iOS zoom on input focus */
+        input, textarea, select { font-size: 16px !important; }
       `}</style>
 
       {/* PWA Install Banner */}
       {installed && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 50, background: "#04cefe", color: "#000", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ fontSize: 12, fontWeight: 900, letterSpacing: "0.05em" }}>App installieren für bessere Nutzung</span>
-          <button onClick={installPWA} style={{ fontSize: 12, fontWeight: 900, background: "#000", color: "#04cefe", padding: "4px 12px", borderRadius: 99, border: "none", cursor: "pointer" }}>
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, zIndex: 50,
+          background: "#04cefe", color: "#000",
+          padding: "14px 16px",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          // safe-area for notch
+          paddingTop: "max(14px, env(safe-area-inset-top))",
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 900, letterSpacing: "0.05em" }}>
+            App installieren für bessere Nutzung
+          </span>
+          <button onClick={installPWA} style={{
+            fontSize: 12, fontWeight: 900, background: "#000", color: "#04cefe",
+            padding: "5px 14px", borderRadius: 99, border: "none", cursor: "pointer",
+          }}>
             Installieren
           </button>
         </div>
@@ -401,34 +406,68 @@ export default function MobilePage() {
 
       {/* Error toast */}
       {error && (
-        <div style={{ position: "fixed", bottom: 16, left: 16, right: 16, zIndex: 50, background: "rgba(239,68,68,0.9)", color: "#fff", fontSize: 14, fontWeight: 700, padding: "12px 16px", borderRadius: 16, textAlign: "center" }}>
+        <div style={{
+          position: "fixed", bottom: "max(80px, calc(80px + env(safe-area-inset-bottom)))",
+          left: 16, right: 16, zIndex: 50,
+          background: "rgba(239,68,68,0.95)", color: "#fff",
+          fontSize: 14, fontWeight: 700,
+          padding: "14px 16px", borderRadius: 16, textAlign: "center",
+        }}>
           {error}
         </div>
       )}
 
-      {/* Header */}
-      <div style={{ position: "sticky", top: 0, zIndex: 40, background: "rgba(0,0,0,0.9)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "16px 20px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div>
-            <div style={{ color: "#04cefe", fontSize: 9, letterSpacing: "0.3em", textTransform: "uppercase" }}>RGBibel</div>
-            <div style={{ color: "#fff", fontWeight: 900, fontSize: 16 }}>{steps[currentStep].icon} {steps[currentStep].title}</div>
+      {/* ── Sticky Header ── */}
+      <div style={{
+        position: "sticky", top: 0, zIndex: 40,
+        background: "rgba(0,0,0,0.92)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        borderBottom: "1px solid rgba(255,255,255,0.08)",
+        // notch support
+        paddingTop: "max(16px, env(safe-area-inset-top))",
+        paddingBottom: 16,
+        paddingLeft: 20,
+        paddingRight: 20,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ color: "#04cefe", fontSize: 9, letterSpacing: "0.3em", textTransform: "uppercase", marginBottom: 2 }}>
+              RGBibel
+            </div>
+            <div style={{
+              color: "#fff", fontWeight: 900,
+              // clamp so long titles don't break layout
+              fontSize: "clamp(14px, 4vw, 17px)",
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+            }}>
+              {steps[currentStep].icon} {steps[currentStep].title}
+            </div>
           </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase" }}>Schritt</div>
-            <div style={{ color: "#04cefe", fontWeight: 900 }}>
-              {currentStep + 1}<span style={{ color: "rgba(255,255,255,0.3)" }}>/{steps.length}</span>
+          <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 12 }}>
+            <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase", marginBottom: 2 }}>
+              Schritt
+            </div>
+            <div style={{ color: "#04cefe", fontWeight: 900, fontSize: 18 }}>
+              {currentStep + 1}
+              <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 14 }}>/{steps.length}</span>
             </div>
           </div>
         </div>
 
         {/* Progress bar */}
-        <div style={{ marginTop: 12, display: "flex", gap: 4 }}>
+        <div style={{ display: "flex", gap: 4 }}>
           {steps.map((_, i) => (
             <div
               key={i}
               onClick={() => setCurrentStep(i)}
               style={{
-                flex: 1, height: 4, borderRadius: 99, cursor: "pointer", transition: "all 0.3s",
+                flex: 1,
+                // larger tap area via padding trick
+                height: 6,
+                borderRadius: 99,
+                cursor: "pointer",
+                transition: "all 0.3s",
                 background: stepImages[i]?.length > 0
                   ? "linear-gradient(90deg,#10b981,rgba(16,185,129,0.5))"
                   : i === currentStep
@@ -440,14 +479,30 @@ export default function MobilePage() {
         </div>
       </div>
 
-      {/* Content */}
-      <div style={{ padding: "24px 20px 128px", display: "flex", flexDirection: "column", gap: 24 }}>
+      {/* ── Scrollable Content ── */}
+      <div style={{
+        padding: "20px 16px",
+        // bottom padding = fixed nav height + safe area
+        paddingBottom: "calc(90px + env(safe-area-inset-bottom))",
+        display: "flex",
+        flexDirection: "column",
+        gap: 20,
+      }}>
 
         {/* Step description */}
-        <div style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: 20, background: "rgba(255,255,255,0.02)" }}>
-          <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 14, lineHeight: 1.6 }}>{steps[currentStep].description}</p>
+        <div style={{
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: 16, padding: "16px 18px",
+          background: "rgba(255,255,255,0.02)",
+        }}>
+          <p style={{ color: "rgba(255,255,255,0.65)", fontSize: 14, lineHeight: 1.65, margin: 0 }}>
+            {steps[currentStep].description}
+          </p>
           {currentImages.length === 0 && (
-            <div style={{ marginTop: 12, fontSize: 10, color: "rgba(4,206,254,0.6)", letterSpacing: "0.15em", textTransform: "uppercase" }}>
+            <div style={{
+              marginTop: 10, fontSize: 10,
+              color: "rgba(4,206,254,0.65)", letterSpacing: "0.15em", textTransform: "uppercase",
+            }}>
               Mindestens 1 Bild erforderlich
             </div>
           )}
@@ -461,9 +516,14 @@ export default function MobilePage() {
           onUpload={(file) => handleImageUpload(file, currentStep)}
         />
 
-        {/* Signature – only on last step when all done */}
+        {/* Signature — only on last step when all done */}
         {isLastStep && allStepsDone && (
-          <div style={{ border: "1px solid rgba(4,206,254,0.2)", borderRadius: 16, padding: 20, background: "rgba(4,206,254,0.03)", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{
+            border: "1px solid rgba(4,206,254,0.2)",
+            borderRadius: 16, padding: "18px 16px",
+            background: "rgba(4,206,254,0.03)",
+            display: "flex", flexDirection: "column", gap: 16,
+          }}>
             <div style={{ color: "#04cefe", fontSize: 10, letterSpacing: "0.3em", textTransform: "uppercase", fontWeight: 700 }}>
               Abschluss &amp; Unterschrift
             </div>
@@ -475,21 +535,36 @@ export default function MobilePage() {
                   value={signerName}
                   onChange={(e) => setSignerName(e.target.value)}
                   placeholder="Ihr Name"
-                  style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, padding: "12px 16px", color: "#fff", fontSize: 14, outline: "none", fontFamily: "inherit" }}
+                  style={{
+                    width: "100%",
+                    background: "rgba(255,255,255,0.05)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: 12, padding: "14px 16px",
+                    color: "#fff",
+                    // 16px prevents iOS zoom
+                    fontSize: 16,
+                    outline: "none",
+                    fontFamily: "inherit",
+                  }}
                 />
                 <SignatureCanvas onSave={handleSignature} />
                 {sigUploading && (
-                  <div style={{ color: "#04cefe", fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ width: 16, height: 16, border: "2px solid rgba(4,206,254,0.3)", borderTopColor: "#04cefe", borderRadius: "50%", display: "inline-block", animation: "spin 0.8s linear infinite" }} />
+                  <div style={{ color: "#04cefe", fontSize: 14, display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{
+                      width: 18, height: 18, flexShrink: 0,
+                      border: "2px solid rgba(4,206,254,0.3)",
+                      borderTopColor: "#04cefe", borderRadius: "50%", display: "inline-block",
+                      animation: "spin 0.8s linear infinite",
+                    }} />
                     Unterschrift wird gespeichert…
                   </div>
                 )}
               </>
             ) : (
-              <div style={{ textAlign: "center", padding: "24px 0" }}>
-                <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
-                <div style={{ color: "#10b981", fontWeight: 900, fontSize: 18 }}>Abgeschlossen!</div>
-                <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, marginTop: 8 }}>
+              <div style={{ textAlign: "center", padding: "28px 0" }}>
+                <div style={{ fontSize: 52, marginBottom: 14 }}>✅</div>
+                <div style={{ color: "#10b981", fontWeight: 900, fontSize: 20 }}>Abgeschlossen!</div>
+                <div style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, marginTop: 8, lineHeight: 1.5 }}>
                   Unterschrift wurde übertragen. Der PC-Techniker kann nun den Bericht generieren.
                 </div>
               </div>
@@ -498,19 +573,48 @@ export default function MobilePage() {
         )}
 
         {isLastStep && !allStepsDone && (
-          <div style={{ border: "1px solid rgba(234,179,8,0.2)", borderRadius: 16, padding: 16, background: "rgba(234,179,8,0.05)", color: "rgba(234,179,8,0.8)", fontSize: 12, textAlign: "center" }}>
+          <div style={{
+            border: "1px solid rgba(234,179,8,0.2)", borderRadius: 16,
+            padding: "14px 16px", background: "rgba(234,179,8,0.05)",
+            color: "rgba(234,179,8,0.8)", fontSize: 13, textAlign: "center", lineHeight: 1.5,
+          }}>
             Bitte erst alle Schritte mit Bildern versehen, bevor unterschrieben werden kann.
           </div>
         )}
       </div>
 
-      {/* Bottom nav */}
-      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.95)", backdropFilter: "blur(20px)", borderTop: "1px solid rgba(255,255,255,0.08)", padding: "16px 20px" }}>
-        <div style={{ display: "flex", gap: 12 }}>
+      {/* ── Fixed Bottom Nav ── */}
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0,
+        // max-width mirror so it stays inside the 600px column on tablet
+        maxWidth: 600, margin: "0 auto",
+        background: "rgba(0,0,0,0.95)",
+        backdropFilter: "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        borderTop: "1px solid rgba(255,255,255,0.08)",
+        // home-bar safe area
+        paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+        paddingTop: 14,
+        paddingLeft: 16,
+        paddingRight: 16,
+      }}>
+        <div style={{ display: "flex", gap: 10 }}>
           <button
             onClick={() => setCurrentStep(Math.max(0, currentStep - 1))}
             disabled={currentStep === 0}
-            style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)", background: "transparent", color: "rgba(255,255,255,0.5)", fontSize: 14, fontWeight: 700, cursor: currentStep === 0 ? "not-allowed" : "pointer", opacity: currentStep === 0 ? 0.2 : 1, fontFamily: "inherit" }}
+            style={{
+              flex: 1,
+              // 52px = comfortable thumb target
+              minHeight: 52,
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "transparent",
+              color: "rgba(255,255,255,0.5)",
+              fontSize: 15, fontWeight: 700,
+              cursor: currentStep === 0 ? "not-allowed" : "pointer",
+              opacity: currentStep === 0 ? 0.2 : 1,
+              fontFamily: "inherit",
+            }}
           >
             ← Zurück
           </button>
@@ -518,11 +622,19 @@ export default function MobilePage() {
             onClick={() => setCurrentStep(Math.min(steps.length - 1, currentStep + 1))}
             disabled={currentImages.length === 0 || isLastStep}
             style={{
-              flex: 1, padding: "12px 0", borderRadius: 12, border: "none",
-              background: currentImages.length > 0 && !isLastStep ? "linear-gradient(135deg,#04cefe,rgba(4,206,254,0.5))" : "rgba(255,255,255,0.1)",
-              color: currentImages.length > 0 && !isLastStep ? "#000" : "rgba(255,255,255,0.3)",
-              fontSize: 14, fontWeight: 900, cursor: currentImages.length === 0 || isLastStep ? "not-allowed" : "pointer",
-              opacity: currentImages.length === 0 || isLastStep ? 0.3 : 1, fontFamily: "inherit",
+              flex: 2,
+              minHeight: 52,
+              borderRadius: 14, border: "none",
+              background: currentImages.length > 0 && !isLastStep
+                ? "linear-gradient(135deg,#04cefe,rgba(4,206,254,0.5))"
+                : "rgba(255,255,255,0.08)",
+              color: currentImages.length > 0 && !isLastStep
+                ? "#000"
+                : "rgba(255,255,255,0.25)",
+              fontSize: 15, fontWeight: 900,
+              cursor: currentImages.length === 0 || isLastStep ? "not-allowed" : "pointer",
+              opacity: currentImages.length === 0 || isLastStep ? 0.4 : 1,
+              fontFamily: "inherit",
             }}
           >
             Weiter →
